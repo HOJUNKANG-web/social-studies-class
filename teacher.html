@@ -103,10 +103,15 @@
             <div class="panel-title">현재 질문 응답</div>
             <div class="response-head-right">
               <span class="response-head-note">현재 질문의 답변만 표시됩니다.</span>
+              <div class="view-toggle" aria-label="응답 보기 방식">
+                <button id="viewCardsBtn" class="view-toggle-btn active" type="button">응답 카드</button>
+                <button id="viewCloudBtn" class="view-toggle-btn" type="button">워드클라우드</button>
+              </div>
               <button id="clearCurrentBtn" class="danger">현재 응답 삭제</button>
             </div>
           </div>
           <div id="responses" class="responses"><div class="empty">아직 제출된 응답이 없습니다.</div></div>
+          <div id="wordCloud" class="word-cloud hidden"></div>
         </section>
 
         <section class="panel">
@@ -140,7 +145,13 @@
           <div class="badge-row"><span id="presentationClass" class="class-badge">-</span><span id="presentationMode" class="mode">-</span></div>
           <div id="presentationQuestion" class="presentation-question">질문</div>
         </div>
-        <button id="exitPresentationBtn">발표 모드 종료</button>
+        <div class="presentation-actions">
+          <div class="view-toggle presentation-toggle" aria-label="발표 보기 방식">
+            <button id="presentationCardsBtn" class="view-toggle-btn active" type="button">응답/집계</button>
+            <button id="presentationCloudBtn" class="view-toggle-btn" type="button">워드클라우드</button>
+          </div>
+          <button id="exitPresentationBtn">발표 모드 종료</button>
+        </div>
       </div>
       <div class="presentation-grid">
         <div id="presentationResult" class="presentation-result"></div>
