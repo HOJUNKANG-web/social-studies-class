@@ -98,10 +98,13 @@
           <div id="summary"></div>
         </section>
 
-        <section class="panel">
-          <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
-            <div class="panel-title">학생 응답</div>
-            <button id="clearCurrentBtn" class="danger">현재 응답 삭제</button>
+        <section class="panel response-panel">
+          <div class="response-section-head">
+            <div class="panel-title">현재 질문 응답</div>
+            <div class="response-head-right">
+              <span class="response-head-note">현재 질문의 답변만 표시됩니다.</span>
+              <button id="clearCurrentBtn" class="danger">현재 응답 삭제</button>
+            </div>
           </div>
           <div id="responses" class="responses"><div class="empty">아직 제출된 응답이 없습니다.</div></div>
         </section>
