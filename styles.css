@@ -65,3 +65,72 @@ textarea{min-height:140px;resize:vertical;line-height:1.55}
 @media(max-width:900px){.dashboard-grid,.presentation-grid{grid-template-columns:1fr}.side-col{order:-1}.builder-grid{grid-template-columns:1fr}.presentation-question{font-size:30px}.presentation-free{grid-template-columns:1fr}.response-section-head{align-items:flex-start}.response-head-right{justify-content:flex-start}}
 @media(max-width:640px){.responses{grid-template-columns:1fr}.response-section-head{flex-direction:column}.response-head-right{width:100%;justify-content:space-between}.response{min-height:0}}
 @media(max-width:560px){.wrap{padding:14px 11px 40px}.card,.panel{padding:17px;border-radius:16px}#question{font-size:22px}.choices{grid-template-columns:1fr}.class-buttons{grid-template-columns:repeat(3,1fr)}.topbar{flex-direction:column}.bar-row{grid-template-columns:100px 1fr 72px}}
+
+
+/* ===== V7.2: 학생 의견 댓글 ===== */
+.peer-panel{margin-top:16px;background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:20px}
+.peer-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.peer-title{font-size:18px;font-weight:950;margin-bottom:4px}
+.peer-responses{display:flex;flex-direction:column;gap:11px;margin-top:14px}
+.peer-empty{padding:24px 12px;text-align:center;color:var(--sub);background:#f8fafc;border:1px dashed #d0d5dd;border-radius:13px}
+.peer-response-card{border:1px solid var(--line);border-radius:15px;background:#fff;padding:14px 15px}
+.peer-response-card.mine{border-color:#c7d2fe;background:#fbfcff}
+.peer-meta{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.peer-name-wrap{display:flex;gap:7px;align-items:center;min-width:0;flex-wrap:wrap}
+.peer-name{font-size:13px;font-weight:950;overflow-wrap:anywhere}
+.peer-time{font-size:11px;color:var(--sub);white-space:nowrap}
+.mine-badge,.comment-mine{display:inline-flex;align-items:center;border-radius:999px;background:var(--soft);color:var(--accent2);font-size:10px;font-weight:900;padding:3px 6px}
+.peer-opinion{margin-top:9px;font-size:14px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+.peer-card-footer{display:flex;justify-content:flex-start;margin-top:11px;padding-top:10px;border-top:1px solid #f0f2f5}
+.comment-toggle{padding:7px 10px;border-radius:9px;font-size:12px;background:#f8fafc;color:#344054}
+.comment-area,.teacher-comment-area{margin-top:11px;padding-top:11px;border-top:1px solid var(--line)}
+.comment-list{display:flex;flex-direction:column;gap:7px}
+.comment-item{padding:9px 10px;border-radius:10px;background:#f8fafc;border:1px solid #eef0f3}
+.comment-meta{display:flex;justify-content:space-between;gap:8px;align-items:center;color:var(--sub);font-size:10px}
+.comment-author{font-weight:900;color:#344054;margin-right:6px}
+.comment-text{margin-top:4px;font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.comment-empty{padding:10px;text-align:center;color:var(--sub);font-size:12px}
+.comment-form{margin-top:9px}
+.comment-input{min-height:64px;max-height:130px;font-size:13px;padding:10px 11px;border-radius:10px;resize:vertical}
+.comment-form-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;color:var(--sub);font-size:10px}
+.comment-submit{padding:7px 10px;border-radius:9px;font-size:12px;background:var(--accent);color:#fff;border-color:var(--accent)}
+.comment-item-actions{text-align:right;margin-top:5px}
+.comment-delete{padding:4px 6px;border:0;background:transparent;color:var(--danger);font-size:10px;font-weight:800}
+
+/* ===== V7.2: 교사용 댓글 관리 ===== */
+.response-actions-split{display:flex;justify-content:space-between;align-items:center;gap:7px}
+.teacher-comment-area{width:100%}
+.teacher-comment-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start;padding:8px 0;border-bottom:1px solid #f0f2f5}
+.teacher-comment-item:last-child{border-bottom:0}
+.teacher-comment-delete{margin-top:2px;white-space:nowrap}
+.history-comments{margin-top:10px;padding:9px 10px;background:#f8fafc;border-radius:10px;border:1px solid #eef0f3}
+.history-comments-title{font-size:11px;font-weight:900;color:#475467;margin-bottom:6px}
+.history-comment{padding:6px 0;border-bottom:1px solid #eaecf0}
+.history-comment:last-child{border-bottom:0}
+
+/* ===== V7.2: 워드클라우드 ===== */
+.view-toggle{display:inline-flex;gap:3px;padding:3px;background:#f2f4f7;border-radius:10px}
+.view-toggle-btn{border:0;background:transparent;border-radius:8px;padding:7px 10px;font-size:11px;color:#667085}
+.view-toggle-btn.active{background:#fff;color:var(--accent2);box-shadow:0 1px 4px rgba(16,24,40,.12)}
+.word-cloud{margin-top:12px;min-height:310px;border:1px solid var(--line);border-radius:16px;background:#fff;padding:24px}
+.word-cloud-host{display:flex;align-items:center;justify-content:center}
+.word-cloud-terms{width:100%;display:flex;align-items:center;justify-content:center;align-content:center;flex-wrap:wrap;gap:10px 15px;min-height:260px;padding:14px;line-height:1}
+.word-cloud-terms.large{min-height:520px;gap:14px 22px;padding:24px}
+.word-cloud-term{display:inline-block;color:var(--accent2);letter-spacing:-.035em;line-height:1.05;transition:transform .15s ease}
+.word-cloud-term:hover{transform:scale(1.06)}
+.word-cloud-empty{padding:90px 20px;text-align:center;color:var(--sub)}
+.presentation-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.presentation-toggle{background:#e9edf5}
+.presentation-result.word-cloud-host{min-height:560px}
+
+@media(max-width:900px){
+  .peer-head{flex-direction:column}
+  .presentation-actions{justify-content:flex-start}
+}
+@media(max-width:560px){
+  .peer-panel{padding:15px;border-radius:16px}
+  .comment-form-actions span{display:none}
+  .word-cloud{padding:12px;min-height:240px}
+  .word-cloud-terms{min-height:210px;gap:8px 11px}
+  .view-toggle-btn{padding:6px 8px}
+}
