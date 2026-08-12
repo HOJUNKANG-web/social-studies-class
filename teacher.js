@@ -18,6 +18,11 @@ let currentResponses = [];
 let sessionUnsub = null;
 let currentUnsub = null;
 let responsesUnsub = null;
+let commentsUnsub = null;
+let currentComments = {};
+let expandedTeacherComments = new Set();
+let currentResponseView = 'cards';
+let presentationView = 'cards';
 let historyCache = [];
 let historyClassFilter = 'all';
 let presentationOpen = false;
@@ -36,6 +41,10 @@ $('refreshHistoryBtn').addEventListener('click', loadHistory);
 $('copyLinkBtn').addEventListener('click', copyStudentLink);
 $('presentationBtn').addEventListener('click', enterPresentation);
 $('exitPresentationBtn').addEventListener('click', exitPresentation);
+$('viewCardsBtn').addEventListener('click', () => setResponseView('cards'));
+$('viewCloudBtn').addEventListener('click', () => setResponseView('cloud'));
+$('presentationCardsBtn').addEventListener('click', () => setPresentationView('cards'));
+$('presentationCloudBtn').addEventListener('click', () => setPresentationView('cloud')); 
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && presentationOpen) exitPresentation(); });
 
 function initStaticUI() {
@@ -136,7 +145,10 @@ function detachDashboard() {
   if (sessionUnsub) sessionUnsub();
   if (currentUnsub) currentUnsub();
   if (responsesUnsub) responsesUnsub();
-  sessionUnsub = currentUnsub = responsesUnsub = null;
+  if (commentsUnsub) commentsUnsub();
+  sessionUnsub = currentUnsub = responsesUnsub = commentsUnsub = null;
+  currentComments = {};
+  expandedTeacherComments.clear();
 }
 
 function updateSessionUI() {
@@ -230,8 +242,12 @@ function attachCurrentQuestion() {
   currentUnsub = null;
   if (responsesUnsub) responsesUnsub();
   responsesUnsub = null;
+  if (commentsUnsub) commentsUnsub();
+  commentsUnsub = null;
   currentQuestion = null;
   currentResponses = [];
+  currentComments = {};
+  expandedTeacherComments.clear();
   renderCurrent();
 
   if (!activeSession) return;
@@ -247,7 +263,10 @@ function attachCurrentQuestion() {
     const questionChanged = currentQuestion?.questionId !== q.questionId;
     currentQuestion = q;
     renderCurrent();
-    if (questionChanged) attachResponses(q);
+    if (questionChanged) {
+      attachResponses(q);
+      attachComments(q);
+    }
   }, error => showTeacherMessage(firebaseError(error), 'err'));
 }
 
@@ -265,6 +284,15 @@ function attachResponses(question) {
     try {
       await set(ref(db, `classes/${question.className}/questions/${question.questionId}/responseCount`), currentResponses.length);
     } catch (_) {}
+  }, error => showTeacherMessage(firebaseError(error), 'err'));
+}
+
+function attachComments(question) {
+  if (commentsUnsub) commentsUnsub();
+  const commentsRef = ref(db, `classes/${question.className}/comments/${question.questionId}`);
+  commentsUnsub = onValue(commentsRef, snapshot => {
+    currentComments = snapshot.val() || {};
+    renderResponses();
   }, error => showTeacherMessage(firebaseError(error), 'err'));
 }
 
@@ -343,7 +371,7 @@ function renderCurrent() {
     $('currentClass').textContent = '-';
     $('currentMode').textContent = '-';
     $('summary').innerHTML = '';
-    renderResponses();
+    renderResponseArea();
     return;
   }
 
@@ -352,14 +380,14 @@ function renderCurrent() {
     $('currentQuestion').textContent = '첫 질문을 기다리는 중입니다.';
     $('currentMode').textContent = '대기';
     $('summary').innerHTML = '';
-    renderResponses();
+    renderResponseArea();
     return;
   }
 
   $('currentQuestion').textContent = currentQuestion.question;
   $('currentMode').textContent = modeName(currentQuestion.mode);
   renderSummary($('summary'), currentQuestion, currentResponses);
-  renderResponses();
+  renderResponseArea();
   if (presentationOpen) renderPresentation();
 }
 
@@ -405,6 +433,23 @@ function renderSummary(root, config, responses) {
   root.appendChild(box);
 }
 
+function setResponseView(view) {
+  currentResponseView = view === 'cloud' ? 'cloud' : 'cards';
+  $('viewCardsBtn').classList.toggle('active', currentResponseView === 'cards');
+  $('viewCloudBtn').classList.toggle('active', currentResponseView === 'cloud');
+  renderResponseArea();
+}
+
+function renderResponseArea() {
+  const responseRoot = $('responses');
+  const cloudRoot = $('wordCloud');
+  const showCloud = currentResponseView === 'cloud';
+  responseRoot.classList.toggle('hidden', showCloud);
+  cloudRoot.classList.toggle('hidden', !showCloud);
+  if (showCloud) renderWordCloud(cloudRoot, currentResponses, false);
+  else renderResponses();
+}
+
 function renderResponses() {
   const root = $('responses');
   root.innerHTML = '';
@@ -430,17 +475,84 @@ function renderResponses() {
     else { op.classList.add('no-extra'); op.textContent=currentQuestion?.mode==='free'?'(내용 없음)':'추가 의견 없음'; }
     card.appendChild(op);
 
-    const actions = document.createElement('div'); actions.className='response-actions';
+    const comments = teacherCommentsFor(item.uid);
+    const actions = document.createElement('div'); actions.className='response-actions response-actions-split';
+    const commentBtn = document.createElement('button');
+    commentBtn.className='comment-toggle';
+    commentBtn.textContent=`댓글 ${comments.length}`;
+    commentBtn.addEventListener('click', () => {
+      if (expandedTeacherComments.has(item.uid)) expandedTeacherComments.delete(item.uid);
+      else expandedTeacherComments.add(item.uid);
+      renderResponses();
+    });
     const del = document.createElement('button'); del.className='danger'; del.textContent='삭제';
     del.addEventListener('click', () => deleteResponse(item.uid));
-    actions.appendChild(del); card.appendChild(actions); root.appendChild(card);
+    actions.append(commentBtn, del); card.appendChild(actions);
+
+    if (expandedTeacherComments.has(item.uid)) {
+      card.appendChild(createTeacherCommentArea(item.uid, comments));
+    }
+    root.appendChild(card);
   });
+}
+
+function teacherCommentsFor(responseUid) {
+  const raw = currentComments?.[responseUid] || {};
+  return Object.entries(raw)
+    .map(([commentId, value]) => ({ commentId, ...value }))
+    .sort((a,b) => Number(a.createdAt || 0) - Number(b.createdAt || 0));
+}
+
+function createTeacherCommentArea(responseUid, comments) {
+  const area = document.createElement('div');
+  area.className = 'teacher-comment-area';
+  if (!comments.length) {
+    area.innerHTML = '<div class="comment-empty">댓글이 없습니다.</div>';
+    return area;
+  }
+  comments.forEach(comment => {
+    const item = document.createElement('div');
+    item.className = 'teacher-comment-item';
+    const body = document.createElement('div');
+    const meta = document.createElement('div');
+    meta.className = 'comment-meta';
+    const author = document.createElement('span');
+    author.className = 'comment-author';
+    author.textContent = comment.name || '익명';
+    const time = document.createElement('span');
+    time.textContent = formatTime(comment.createdAt);
+    meta.append(author, time);
+    const text = document.createElement('div');
+    text.className = 'comment-text';
+    text.textContent = comment.text || '';
+    body.append(meta, text);
+    const del = document.createElement('button');
+    del.className = 'comment-delete teacher-comment-delete';
+    del.textContent = '댓글 삭제';
+    del.addEventListener('click', () => deleteComment(responseUid, comment.commentId));
+    item.append(body, del);
+    area.appendChild(item);
+  });
+  return area;
+}
+
+async function deleteComment(responseUid, commentId) {
+  if (!currentQuestion || !commentId) return;
+  if (!confirm('이 댓글을 삭제할까요?')) return;
+  try {
+    await remove(ref(db, `classes/${currentQuestion.className}/comments/${currentQuestion.questionId}/${responseUid}/${commentId}`));
+  } catch (error) {
+    showTeacherMessage(firebaseError(error), 'err');
+  }
 }
 
 async function deleteResponse(uid) {
   if (!currentQuestion || !confirm('이 응답을 삭제할까요?')) return;
   try {
-    await remove(ref(db, `classes/${currentQuestion.className}/responses/${currentQuestion.questionId}/${uid}`));
+    const updates = {};
+    updates[`classes/${currentQuestion.className}/responses/${currentQuestion.questionId}/${uid}`] = null;
+    updates[`classes/${currentQuestion.className}/comments/${currentQuestion.questionId}/${uid}`] = null;
+    await update(ref(db), updates);
   } catch (error) { showTeacherMessage(firebaseError(error), 'err'); }
 }
 
@@ -448,8 +560,11 @@ async function clearCurrentResponses() {
   if (!currentQuestion || !currentResponses.length) return;
   if (!confirm(`현재 질문의 응답 ${currentResponses.length}명을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return;
   try {
-    await remove(ref(db, `classes/${currentQuestion.className}/responses/${currentQuestion.questionId}`));
-    await set(ref(db, `classes/${currentQuestion.className}/questions/${currentQuestion.questionId}/responseCount`), 0);
+    const updates = {};
+    updates[`classes/${currentQuestion.className}/responses/${currentQuestion.questionId}`] = null;
+    updates[`classes/${currentQuestion.className}/comments/${currentQuestion.questionId}`] = null;
+    updates[`classes/${currentQuestion.className}/questions/${currentQuestion.questionId}/responseCount`] = 0;
+    await update(ref(db), updates);
   } catch (error) { showTeacherMessage(firebaseError(error), 'err'); }
 }
 
@@ -538,8 +653,15 @@ function createHistoryCard(q) {
 
 async function loadHistoryResponses(q, body) {
   try {
-    const snapshot = await get(ref(db, `classes/${q.className}/responses/${q.questionId}`));
-    const responses = Object.values(snapshot.val() || {}).sort((a,b)=>Number(b.submittedAt||0)-Number(a.submittedAt||0));
+    const [responseSnapshot, commentSnapshot] = await Promise.all([
+      get(ref(db, `classes/${q.className}/responses/${q.questionId}`)),
+      get(ref(db, `classes/${q.className}/comments/${q.questionId}`))
+    ]);
+    const responsesRaw = responseSnapshot.val() || {};
+    const commentsRaw = commentSnapshot.val() || {};
+    const responses = Object.entries(responsesRaw)
+      .map(([uid, value]) => ({ uid, ...value }))
+      .sort((a,b)=>Number(b.submittedAt||0)-Number(a.submittedAt||0));
     body.innerHTML='';
     if (q.mode !== 'free') renderSummary(body, q, responses);
     if (!responses.length) {
@@ -553,6 +675,21 @@ async function loadHistoryResponses(q, body) {
       const time = document.createElement('span'); time.textContent=formatTime(r.submittedAt); meta.append(name,time); item.appendChild(meta);
       if (q.mode !== 'free') { const tag=document.createElement('div'); tag.className='answer-tag'; tag.textContent=q.mode==='scale'?`${r.answer}점`:r.answer; item.appendChild(tag); }
       const op=document.createElement('div'); op.className='opinion'; if(r.opinion) op.textContent=r.opinion; else {op.classList.add('no-extra');op.textContent=q.mode==='free'?'(내용 없음)':'추가 의견 없음';} item.appendChild(op);
+      const rawComments = commentsRaw?.[r.uid] || {};
+      const comments = Object.entries(rawComments).map(([commentId, value]) => ({commentId, ...value})).sort((a,b)=>Number(a.createdAt||0)-Number(b.createdAt||0));
+      if (comments.length) {
+        const cbox = document.createElement('div'); cbox.className='history-comments';
+        const ctitle = document.createElement('div'); ctitle.className='history-comments-title'; ctitle.textContent=`댓글 ${comments.length}`; cbox.appendChild(ctitle);
+        comments.forEach(c => {
+          const ci=document.createElement('div');ci.className='history-comment';
+          const cm=document.createElement('div');cm.className='comment-meta';
+          const ca=document.createElement('span');ca.className='comment-author';ca.textContent=c.name||'익명';
+          const ct=document.createElement('span');ct.textContent=formatTime(c.createdAt);cm.append(ca,ct);
+          const cx=document.createElement('div');cx.className='comment-text';cx.textContent=c.text||'';
+          ci.append(cm,cx);cbox.appendChild(ci);
+        });
+        item.appendChild(cbox);
+      }
       root.appendChild(item);
     });
     body.appendChild(root);
@@ -563,15 +700,16 @@ async function loadHistoryResponses(q, body) {
 
 async function deleteHistoryQuestion(q) {
   if (currentQuestion?.questionId === q.questionId) return showTeacherMessage('현재 진행 중인 질문은 삭제할 수 없습니다.', 'err');
-  const ok = confirm(`이 질문 기록을 삭제할까요?\n\n${q.question}\n\n연결된 학생 답변도 함께 삭제됩니다.`);
+  const ok = confirm(`이 질문 기록을 삭제할까요?\n\n${q.question}\n\n연결된 학생 답변과 댓글도 함께 삭제됩니다.`);
   if (!ok) return;
   try {
     const updates = {};
     updates[`classes/${q.className}/questions/${q.questionId}`] = null;
     updates[`classes/${q.className}/responses/${q.questionId}`] = null;
+    updates[`classes/${q.className}/comments/${q.questionId}`] = null;
     await update(ref(db), updates);
     await loadHistory();
-    showTeacherMessage('질문 기록과 연결된 답변을 삭제했습니다.');
+    showTeacherMessage('질문 기록과 연결된 답변·댓글을 삭제했습니다.');
   } catch (error) { showTeacherMessage(firebaseError(error), 'err'); }
 }
 
@@ -589,6 +727,13 @@ function exitPresentation() {
   if (document.fullscreenElement) document.exitFullscreen?.().catch(()=>{});
 }
 
+function setPresentationView(view) {
+  presentationView = view === 'cloud' ? 'cloud' : 'cards';
+  $('presentationCardsBtn').classList.toggle('active', presentationView === 'cards');
+  $('presentationCloudBtn').classList.toggle('active', presentationView === 'cloud');
+  if (presentationOpen) renderPresentation();
+}
+
 function renderPresentation() {
   if (!currentQuestion) return;
   $('presentationQuestion').textContent=currentQuestion.question;
@@ -596,10 +741,101 @@ function renderPresentation() {
   $('presentationMode').textContent=modeName(currentQuestion.mode);
   $('presentationCount').textContent=`${currentResponses.length}명`;
   const root=$('presentationResult'); root.innerHTML='';
-  if (currentQuestion.mode !== 'free') { renderSummary(root,currentQuestion,currentResponses); return; }
-  if (!currentResponses.length) { root.innerHTML='<div class="presentation-empty">학생 의견을 기다리는 중입니다.</div>'; return; }
-  const wall=document.createElement('div'); wall.className='presentation-free';
-  currentResponses.slice(0,6).forEach(r=>{const card=document.createElement('div');card.className='presentation-free-card';const meta=document.createElement('div');meta.className='presentation-free-meta';meta.textContent=`${r.name||'익명'} · ${formatTime(r.submittedAt)}`;const text=document.createElement('div');text.className='presentation-free-text';text.textContent=r.opinion||'(내용 없음)';card.append(meta,text);wall.appendChild(card)}); root.appendChild(wall);
+  root.classList.remove('word-cloud-host');
+
+  if (presentationView === 'cloud') {
+    renderWordCloud(root, currentResponses, true);
+    return;
+  }
+
+  if (currentQuestion.mode !== 'free') {
+    renderSummary(root,currentQuestion,currentResponses);
+    return;
+  }
+  if (!currentResponses.length) {
+    root.innerHTML='<div class="presentation-empty">학생 의견을 기다리는 중입니다.</div>';
+    return;
+  }
+  const wall=document.createElement('div');
+  wall.className='presentation-free';
+  currentResponses.slice(0,6).forEach(r=>{
+    const card=document.createElement('div');card.className='presentation-free-card';
+    const meta=document.createElement('div');meta.className='presentation-free-meta';meta.textContent=`${r.name||'익명'} · ${formatTime(r.submittedAt)}`;
+    const text=document.createElement('div');text.className='presentation-free-text';text.textContent=r.opinion||'(내용 없음)';
+    card.append(meta,text);wall.appendChild(card);
+  });
+  root.appendChild(wall);
+}
+
+const WORD_STOP = new Set([
+  '그리고','그러나','하지만','그래서','또한','또','정말','매우','너무','조금','그냥','저는','제가','나는','내가','우리','우리는',
+  '생각','생각합니다','생각해요','생각한다','생각입니다','같다','같아요','같습니다','때문','때문에','대한','대해','통해','위해',
+  '것','것은','것이','것을','것도','수','있다','있습니다','있는','없다','없습니다','한다','합니다','해야','하지','입니다','이다','된다','되는',
+  '사람','학생','질문','의견','경우','부분','이런','그런','이것','그것','저것','한','할','하는','하고','하면','하여','해서','라고','이라는','라는'
+]);
+
+function renderWordCloud(root, responses, large=false) {
+  root.innerHTML='';
+  root.classList.add('word-cloud-host');
+  const terms = buildWordTerms(responses);
+  if (!terms.length) {
+    const empty=document.createElement('div');
+    empty.className=large?'presentation-empty':'word-cloud-empty';
+    empty.textContent='워드클라우드를 만들 수 있는 서술형 의견이 아직 없습니다.';
+    root.appendChild(empty);
+    return;
+  }
+
+  const cloud=document.createElement('div');
+  cloud.className='word-cloud-terms' + (large?' large':'');
+  const max=terms[0].count;
+  const min=terms[terms.length-1].count;
+  const minSize=large?28:18;
+  const maxSize=large?76:46;
+  const spread=Math.max(1,max-min);
+  const arranged=[...terms].sort((a,b)=>wordHash(a.word)-wordHash(b.word));
+  arranged.forEach(term=>{
+    const el=document.createElement('span');
+    el.className='word-cloud-term';
+    const ratio=(term.count-min)/spread;
+    el.style.fontSize=`${Math.round(minSize+(maxSize-minSize)*Math.sqrt(Math.max(0,ratio)))}px`;
+    el.style.fontWeight=String(Math.round(750+200*ratio));
+    el.style.opacity=String(0.68+0.32*ratio);
+    el.textContent=term.word;
+    el.title=`${term.count}회`;
+    cloud.appendChild(el);
+  });
+  root.appendChild(cloud);
+}
+
+function buildWordTerms(responses) {
+  const freq=new Map();
+  responses.forEach(r=>{
+    const text=String(r.opinion||'').normalize('NFKC');
+    text.split(/\s+/u).forEach(token=>{
+      const word=normalizeWord(token);
+      if (!word) return;
+      freq.set(word,(freq.get(word)||0)+1);
+    });
+  });
+  return [...freq.entries()]
+    .map(([word,count])=>({word,count}))
+    .sort((a,b)=>b.count-a.count || a.word.localeCompare(b.word,'ko'))
+    .slice(0,40);
+}
+
+function normalizeWord(token) {
+  let word=String(token||'').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+  if (word.length<2) return '';
+  word=word.replace(/(에서는|으로는|에게는|까지는|부터는|이라는|이라는|라고|으로|에서|에게|한테|처럼|보다|하고|이며|이라|라는|은|는|을|를|도|만|와|과)$/u,'');
+  if (word.length<2 || WORD_STOP.has(word)) return '';
+  return word;
+}
+
+function wordHash(word) {
+  let h=0;
+  for (const ch of word) h=(h*31+ch.codePointAt(0))%1000003;
+  return h;
 }
 
 async function copyStudentLink() {
