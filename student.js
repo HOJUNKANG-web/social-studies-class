@@ -3,7 +3,7 @@ import {
   getAuth, setPersistence, browserLocalPersistence, signInAnonymously
 } from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js';
 import {
-  getDatabase, ref, onValue, get, set, serverTimestamp, goOffline, goOnline
+  getDatabase, ref, onValue, get, set, push, remove, serverTimestamp, goOffline, goOnline
 } from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js';
 import {
   FIREBASE_CONFIG, BACKGROUND_DISCONNECT_MS, MAX_SESSION_CONNECTION_MS
@@ -19,10 +19,16 @@ let currentQuestion = null;
 let selectedAnswer = '';
 let sessionUnsub = null;
 let questionUnsub = null;
+let peerResponsesUnsub = null;
+let peerCommentsUnsub = null;
 let backgroundTimer = null;
 let maxSessionTimer = null;
 let offlineReason = '';
 let reconnectable = false;
+let peerResponses = [];
+let peerComments = {};
+const expandedComments = new Set();
+const commentDrafts = new Map();
 
 const classBadge = document.getElementById('classBadge');
 const modeBadge = document.getElementById('modeBadge');
@@ -32,17 +38,22 @@ const nameEl = document.getElementById('name');
 const answerArea = document.getElementById('answerArea');
 const submitBtn = document.getElementById('submitBtn');
 const msg = document.getElementById('message');
+const peerSection = document.getElementById('peerSection');
+const peerResponsesEl = document.getElementById('peerResponses');
+const peerCountEl = document.getElementById('peerCount');
 
 nameEl.value = localStorage.getItem('classOpinionNameV7') || '';
 submitBtn.addEventListener('click', submitAnswer);
+
+nameEl.addEventListener('input', () => {
+  localStorage.setItem('classOpinionNameV7', nameEl.value.trim().slice(0, 30));
+});
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     clearTimeout(backgroundTimer);
     backgroundTimer = setTimeout(() => {
-      if (currentSession?.active) {
-        disconnectRealtime('background');
-      }
+      if (currentSession?.active) disconnectRealtime('background');
     }, BACKGROUND_DISCONNECT_MS);
   } else {
     clearTimeout(backgroundTimer);
@@ -69,8 +80,23 @@ function cleanupQuestionListener() {
   questionUnsub = null;
 }
 
+function cleanupPeerListeners() {
+  if (peerResponsesUnsub) peerResponsesUnsub();
+  if (peerCommentsUnsub) peerCommentsUnsub();
+  peerResponsesUnsub = null;
+  peerCommentsUnsub = null;
+  peerResponses = [];
+  peerComments = {};
+  expandedComments.clear();
+  commentDrafts.clear();
+  peerSection.classList.add('hidden');
+  peerResponsesEl.innerHTML = '';
+  peerCountEl.textContent = '0개 의견';
+}
+
 function cleanupListeners() {
   cleanupQuestionListener();
+  cleanupPeerListeners();
   if (sessionUnsub) sessionUnsub();
   sessionUnsub = null;
 }
@@ -83,6 +109,7 @@ function renderWaiting(title, text) {
   submitBtn.classList.add('hidden');
   modeBadge.textContent = '대기';
   questionEl.textContent = title;
+  cleanupPeerListeners();
 
   const box = document.createElement('div');
   box.className = 'waiting-box';
@@ -105,6 +132,7 @@ function renderDisconnected(title, text, canReconnect=false) {
   modeBadge.textContent = '연결 종료';
   classBadge.textContent = currentSession?.className || '수업 종료';
   questionEl.textContent = title;
+  cleanupPeerListeners();
 
   const box = document.createElement('div');
   box.className = 'waiting-box';
@@ -145,11 +173,17 @@ function subscribeQuestion(session) {
       renderWaiting(`${session.className} 수업`, '새 질문을 기다리는 중입니다.');
       return;
     }
-    if (!currentQuestion || currentQuestion.questionId !== q.questionId || currentQuestion.version !== q.version) {
-      const changed = Boolean(currentQuestion && currentQuestion.questionId !== q.questionId);
-      currentQuestion = q;
+
+    const changed = !currentQuestion || currentQuestion.questionId !== q.questionId;
+    const versionChanged = !currentQuestion || currentQuestion.version !== q.version;
+    currentQuestion = q;
+
+    if (changed || versionChanged) {
       renderQuestion();
-      if (changed) showMessage('새 질문이 시작되었습니다.', 'info');
+      if (changed) {
+        attachPeerDiscussion(q);
+        if (peerResponses.length) showMessage('새 질문이 시작되었습니다.', 'info');
+      }
     }
   }, error => showMessage(firebaseError(error), 'err'));
 }
@@ -188,6 +222,7 @@ function renderQuestion() {
   submitBtn.classList.remove('hidden');
   submitBtn.disabled = false;
   submitBtn.textContent = '의견 제출';
+  peerSection.classList.remove('hidden');
 
   if (q.mode === 'free') {
     const label = document.createElement('label');
@@ -327,6 +362,254 @@ async function submitAnswer() {
   }
 }
 
+function attachPeerDiscussion(question) {
+  cleanupPeerListeners();
+  peerSection.classList.remove('hidden');
+
+  const responsesRef = ref(db, `classes/${question.className}/responses/${question.questionId}`);
+  peerResponsesUnsub = onValue(responsesRef, snapshot => {
+    const raw = snapshot.val() || {};
+    peerResponses = Object.entries(raw)
+      .map(([responseUid, value]) => ({ responseUid, ...value }))
+      .sort((a,b) => Number(b.submittedAt || 0) - Number(a.submittedAt || 0));
+    renderPeerDiscussion();
+  }, error => renderPeerError(firebaseError(error)));
+
+  const commentsRef = ref(db, `classes/${question.className}/comments/${question.questionId}`);
+  peerCommentsUnsub = onValue(commentsRef, snapshot => {
+    peerComments = snapshot.val() || {};
+    renderPeerDiscussion();
+  }, error => renderPeerError(firebaseError(error)));
+}
+
+function renderPeerError(text) {
+  peerResponsesEl.innerHTML = '';
+  const box = document.createElement('div');
+  box.className = 'peer-empty';
+  box.textContent = text;
+  peerResponsesEl.appendChild(box);
+}
+
+function renderPeerDiscussion() {
+  if (!currentQuestion) return;
+  captureCommentDrafts();
+  peerSection.classList.remove('hidden');
+  peerCountEl.textContent = `${peerResponses.length}개 의견`;
+  peerResponsesEl.innerHTML = '';
+
+  if (!peerResponses.length) {
+    peerResponsesEl.innerHTML = '<div class="peer-empty">아직 친구 의견이 없습니다. 첫 의견을 남겨보세요.</div>';
+    return;
+  }
+
+  peerResponses.forEach(item => peerResponsesEl.appendChild(createPeerResponseCard(item)));
+}
+
+function createPeerResponseCard(item) {
+  const card = document.createElement('article');
+  card.className = 'peer-response-card';
+  card.dataset.responseUid = item.responseUid;
+  if (item.responseUid === uid) card.classList.add('mine');
+
+  const meta = document.createElement('div');
+  meta.className = 'peer-meta';
+  const nameWrap = document.createElement('div');
+  nameWrap.className = 'peer-name-wrap';
+  const name = document.createElement('span');
+  name.className = 'peer-name';
+  name.textContent = item.name || '익명';
+  nameWrap.appendChild(name);
+  if (item.responseUid === uid) {
+    const mine = document.createElement('span');
+    mine.className = 'mine-badge';
+    mine.textContent = '내 의견';
+    nameWrap.appendChild(mine);
+  }
+  const time = document.createElement('span');
+  time.className = 'peer-time';
+  time.textContent = formatTime(item.submittedAt);
+  meta.append(nameWrap, time);
+  card.appendChild(meta);
+
+  if (currentQuestion.mode !== 'free') {
+    const tag = document.createElement('div');
+    tag.className = 'answer-tag';
+    tag.textContent = currentQuestion.mode === 'scale' ? `${item.answer}점` : (item.answer || '선택 없음');
+    card.appendChild(tag);
+  }
+
+  const opinion = document.createElement('div');
+  opinion.className = 'peer-opinion';
+  opinion.textContent = item.opinion || (currentQuestion.mode === 'free' ? '(내용 없음)' : '추가 의견 없음');
+  if (!item.opinion) opinion.classList.add('no-extra');
+  card.appendChild(opinion);
+
+  const comments = commentsFor(item.responseUid);
+  const footer = document.createElement('div');
+  footer.className = 'peer-card-footer';
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'comment-toggle';
+  toggle.textContent = `댓글 ${comments.length}`;
+  toggle.addEventListener('click', () => {
+    if (expandedComments.has(item.responseUid)) expandedComments.delete(item.responseUid);
+    else expandedComments.add(item.responseUid);
+    renderPeerDiscussion();
+  });
+  footer.appendChild(toggle);
+  card.appendChild(footer);
+
+  if (expandedComments.has(item.responseUid)) {
+    card.appendChild(createCommentArea(item.responseUid, comments));
+  }
+
+  return card;
+}
+
+function commentsFor(responseUid) {
+  const raw = peerComments?.[responseUid] || {};
+  return Object.entries(raw)
+    .map(([commentId, value]) => ({ commentId, ...value }))
+    .sort((a,b) => Number(a.createdAt || 0) - Number(b.createdAt || 0));
+}
+
+function createCommentArea(responseUid, comments) {
+  const area = document.createElement('div');
+  area.className = 'comment-area';
+
+  const list = document.createElement('div');
+  list.className = 'comment-list';
+  if (!comments.length) {
+    const empty = document.createElement('div');
+    empty.className = 'comment-empty';
+    empty.textContent = '아직 댓글이 없습니다.';
+    list.appendChild(empty);
+  } else {
+    comments.forEach(comment => list.appendChild(createCommentItem(responseUid, comment)));
+  }
+  area.appendChild(list);
+
+  const form = document.createElement('div');
+  form.className = 'comment-form';
+  const input = document.createElement('textarea');
+  input.className = 'comment-input';
+  input.maxLength = 200;
+  input.rows = 2;
+  input.placeholder = '질문·동의·반론을 200자 이내로 남겨보세요.';
+  input.value = commentDrafts.get(responseUid) || '';
+  input.addEventListener('input', () => commentDrafts.set(responseUid, input.value));
+  input.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      event.preventDefault();
+      submitComment(responseUid, input);
+    }
+  });
+  const actionRow = document.createElement('div');
+  actionRow.className = 'comment-form-actions';
+  const hint = document.createElement('span');
+  hint.textContent = 'Ctrl+Enter로 등록';
+  const send = document.createElement('button');
+  send.type = 'button';
+  send.className = 'comment-submit';
+  send.textContent = '댓글 등록';
+  send.addEventListener('click', () => submitComment(responseUid, input));
+  actionRow.append(hint, send);
+  form.append(input, actionRow);
+  area.appendChild(form);
+  return area;
+}
+
+function createCommentItem(responseUid, comment) {
+  const item = document.createElement('div');
+  item.className = 'comment-item';
+  const top = document.createElement('div');
+  top.className = 'comment-meta';
+  const left = document.createElement('div');
+  const author = document.createElement('span');
+  author.className = 'comment-author';
+  author.textContent = comment.name || '익명';
+  left.appendChild(author);
+  if (comment.uid === uid) {
+    const mine = document.createElement('span');
+    mine.className = 'comment-mine';
+    mine.textContent = '나';
+    left.appendChild(mine);
+  }
+  const time = document.createElement('span');
+  time.textContent = formatTime(comment.createdAt);
+  top.append(left, time);
+  item.appendChild(top);
+
+  const text = document.createElement('div');
+  text.className = 'comment-text';
+  text.textContent = comment.text || '';
+  item.appendChild(text);
+
+  if (comment.uid === uid) {
+    const actions = document.createElement('div');
+    actions.className = 'comment-item-actions';
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'comment-delete';
+    del.textContent = '내 댓글 삭제';
+    del.addEventListener('click', () => deleteOwnComment(responseUid, comment.commentId));
+    actions.appendChild(del);
+    item.appendChild(actions);
+  }
+  return item;
+}
+
+async function submitComment(responseUid, input) {
+  if (!currentSession?.active || !currentQuestion) return;
+  const text = String(input?.value || '').trim().slice(0, 200);
+  if (!text) {
+    input?.focus();
+    return;
+  }
+
+  const name = nameEl.value.trim().slice(0, 30) || '익명';
+  localStorage.setItem('classOpinionNameV7', nameEl.value.trim().slice(0, 30));
+  const target = ref(db, `classes/${currentSession.className}/comments/${currentQuestion.questionId}/${responseUid}`);
+  const commentRef = push(target);
+
+  input.disabled = true;
+  try {
+    await set(commentRef, {
+      uid,
+      name,
+      text,
+      className: currentSession.className,
+      sessionId: currentSession.sessionId,
+      questionId: currentQuestion.questionId,
+      responseUid,
+      createdAt: serverTimestamp()
+    });
+    commentDrafts.delete(responseUid);
+    input.value = '';
+  } catch (error) {
+    showMessage(firebaseError(error), 'err');
+  } finally {
+    input.disabled = false;
+  }
+}
+
+async function deleteOwnComment(responseUid, commentId) {
+  if (!currentQuestion || !commentId) return;
+  try {
+    await remove(ref(db, `classes/${currentSession.className}/comments/${currentQuestion.questionId}/${responseUid}/${commentId}`));
+  } catch (error) {
+    showMessage(firebaseError(error), 'err');
+  }
+}
+
+function captureCommentDrafts() {
+  document.querySelectorAll('.comment-input').forEach(input => {
+    const card = input.closest('.peer-response-card');
+    const responseUid = card?.dataset?.responseUid;
+    if (responseUid) commentDrafts.set(responseUid, input.value);
+  });
+}
+
 function disconnectRealtime(reason) {
   clearTimeout(backgroundTimer);
   clearTimeout(maxSessionTimer);
@@ -369,6 +652,12 @@ async function reconnectSameSession() {
     showMessage(firebaseError(error), 'err');
     try { goOffline(db); } catch (_) {}
   }
+}
+
+function formatTime(value) {
+  const n = Number(value || 0);
+  if (!n) return '';
+  return new Date(n).toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' });
 }
 
 function firebaseError(error) {
