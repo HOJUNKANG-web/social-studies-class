@@ -1,6 +1,6 @@
 // Firebase Console > 프로젝트 설정 > 내 앱 > SDK 설정 및 구성에서 복사하세요.
 // 이 값들은 웹 클라이언트 식별용 설정이며, 보안은 Realtime Database Security Rules가 담당합니다.
-export const firebaseConfig = {
+export const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDdol89kGuvc42Cf3LrrliwTv05Os4FUKo",
   authDomain: "social-studies-class-e5293.firebaseapp.com",
   databaseURL: "https://social-studies-class-e5293-default-rtdb.asia-southeast1.firebasedatabase.app",
