@@ -25,7 +25,18 @@
       <button id="submitBtn" class="submit hidden" type="button">의견 제출</button>
       <div id="message" class="msg"></div>
     </div>
-    <div class="footer">질문이 바뀔 때만 화면이 실시간으로 갱신됩니다. 수업이 끝나면 연결도 자동으로 종료됩니다.</div>
+    <section id="peerSection" class="peer-panel hidden">
+      <div class="peer-head">
+        <div>
+          <div class="peer-title">친구 의견</div>
+          <div class="sub">현재 질문에 올라온 의견을 보고 댓글로 질문·동의·반론을 남길 수 있습니다.</div>
+        </div>
+        <div id="peerCount" class="badge gray">0개 의견</div>
+      </div>
+      <div id="peerResponses" class="peer-responses"></div>
+    </section>
+
+    <div class="footer">질문이 바뀌면 화면이 실시간으로 갱신됩니다. 수업이 끝나면 연결도 자동으로 종료됩니다.</div>
   </div>
   <script type="module" src="student.js"></script>
 </body>
