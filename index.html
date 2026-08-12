@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>수업 의견 제출</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="wrap student">
+    <div class="brand">수업 의견 나누기</div>
+    <div class="card">
+      <div class="badge-row">
+        <div id="classBadge" class="class-badge">연결 준비 중</div>
+        <div id="modeBadge" class="mode">대기</div>
+      </div>
+      <div id="question">수업 연결을 준비하고 있습니다...</div>
+
+      <div id="nameSection">
+        <label for="name">이름 또는 학번 <span style="font-weight:400;color:#98a2b3">(선택)</span></label>
+        <input id="name" maxlength="30" placeholder="비워두면 익명으로 제출됩니다.">
+      </div>
+
+      <div id="answerArea"></div>
+      <button id="submitBtn" class="submit hidden" type="button">의견 제출</button>
+      <div id="message" class="msg"></div>
+    </div>
+    <div class="footer">질문이 바뀔 때만 화면이 실시간으로 갱신됩니다. 수업이 끝나면 연결도 자동으로 종료됩니다.</div>
+  </div>
+  <script type="module" src="student.js"></script>
+</body>
+</html>

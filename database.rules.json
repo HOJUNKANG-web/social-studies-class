@@ -1,0 +1,39 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "system": {
+      "currentSession": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === 'PASTE_TEACHER_UID_HERE'"
+      }
+    },
+
+    "classes": {
+      "$class": {
+        "current": {
+          ".read": "auth != null",
+          ".write": "auth != null && auth.uid === 'PASTE_TEACHER_UID_HERE'"
+        },
+
+        "questions": {
+          ".read": "auth != null && auth.uid === 'PASTE_TEACHER_UID_HERE'",
+          "$qid": {
+            ".write": "auth != null && auth.uid === 'PASTE_TEACHER_UID_HERE'"
+          }
+        },
+
+        "responses": {
+          "$qid": {
+            ".read": "auth != null && auth.uid === 'PASTE_TEACHER_UID_HERE'",
+            "$uid": {
+              ".write": "auth != null && (auth.uid === 'PASTE_TEACHER_UID_HERE' || (auth.uid === $uid && root.child('system').child('currentSession').child('active').val() === true && root.child('system').child('currentSession').child('className').val() === $class && root.child('classes').child($class).child('current').child('questionId').val() === $qid && root.child('classes').child($class).child('current').child('sessionId').val() === newData.child('sessionId').val()))",
+              ".validate": "!newData.exists() || (newData.hasChildren(['uid','name','className','sessionId','questionId','mode','answer','opinion','submittedAt']) && newData.child('uid').val() === $uid && newData.child('className').val() === $class && newData.child('questionId').val() === $qid && newData.child('mode').val() === root.child('classes').child($class).child('current').child('mode').val() && newData.child('name').isString() && newData.child('name').val().length <= 30 && newData.child('answer').isString() && newData.child('answer').val().length <= 60 && newData.child('opinion').isString() && newData.child('opinion').val().length <= 800)"
+            }
+          }
+        }
+      }
+    }
+  }
+}

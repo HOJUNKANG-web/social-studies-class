@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>교사용 수업 의견판</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <section id="login" class="login-shell">
+    <div class="card login-card">
+      <div class="login-title">교사용 의견판</div>
+      <div class="sub">Firebase Authentication의 Google 로그인으로 교사 계정을 확인합니다.</div>
+      <div class="login-actions"><button id="loginBtn" class="primary">Google로 로그인</button></div>
+      <div id="loginMsg" class="msg"></div>
+    </div>
+  </section>
+
+  <main id="dashboard" class="wrap hidden">
+    <div class="topbar">
+      <div>
+        <h1>수업 의견판</h1>
+        <div class="sub" style="margin-top:5px">학생 화면은 질문 변경과 응답만 실시간으로 동작하며, 수업 종료 시 연결이 자동 종료됩니다.</div>
+      </div>
+      <div class="actions">
+        <button id="presentationBtn" class="primary">발표 모드</button>
+        <button id="copyLinkBtn" class="soft">학생 링크 복사</button>
+        <button id="refreshHistoryBtn" class="muted">기록 새로고침</button>
+        <button id="logoutBtn" class="muted">로그아웃</button>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <div class="main-col">
+        <section class="panel">
+          <div id="sessionStart" class="session-start">
+            <div class="session-start-title">오늘 어느 반 수업을 시작할까요?</div>
+            <div class="sub">반을 시작한 뒤 학생들이 같은 QR을 찍으면 현재 수업으로 자동 연결됩니다.</div>
+            <div id="classButtons" class="class-buttons"></div>
+          </div>
+          <div id="sessionPanel" class="session-panel hidden">
+            <div>
+              <div class="session-kicker">현재 수업</div>
+              <div id="activeClassText" class="session-class">-</div>
+            </div>
+            <div class="session-actions">
+              <button id="changeClassBtn">반 변경</button>
+              <button id="endClassBtn" class="end">수업 종료</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="questionBuilder" class="panel locked">
+          <div class="panel-title">새 질문</div>
+          <div class="builder-grid form-row">
+            <div>
+              <label for="questionInput">질문</label>
+              <textarea id="questionInput" maxlength="200" placeholder="학생들에게 물어볼 질문을 입력하세요." style="min-height:100px"></textarea>
+            </div>
+            <div>
+              <label for="modeSelect">응답 방식</label>
+              <select id="modeSelect">
+                <option value="free">자유 의견</option>
+                <option value="agree">찬성 · 반대</option>
+                <option value="mcq">객관식</option>
+                <option value="scale">5점 척도</option>
+              </select>
+            </div>
+          </div>
+          <div id="mcqSettings" class="form-row hidden">
+            <label for="optionsInput">객관식 선택지</label>
+            <textarea id="optionsInput" placeholder="한 줄에 선택지 하나씩 입력하세요.\n예)\n경제 성장\n분배 개선\n환경 보호" style="min-height:110px"></textarea>
+          </div>
+          <div id="scaleSettings" class="builder-grid form-row hidden">
+            <div><label for="scaleLeft">1점 설명</label><input id="scaleLeft" maxlength="40" value="전혀 동의하지 않음"></div>
+            <div><label for="scaleRight">5점 설명</label><input id="scaleRight" maxlength="40" value="매우 동의함"></div>
+          </div>
+          <div id="additionalSetting" class="checkbox-row hidden">
+            <input id="additionalEnabled" type="checkbox" checked>
+            <label for="additionalEnabled">선택 후 이유·추가 의견도 함께 받기</label>
+          </div>
+          <div class="builder-footer">
+            <div class="sub">새 질문을 시작하면 직전 질문과 답변은 Firebase에 그대로 보관됩니다.</div>
+            <button id="startQuestionBtn" class="primary">새 질문 시작</button>
+          </div>
+          <div id="teacherMsg" class="msg"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">현재 질문</div>
+          <div id="currentQuestion" class="current-question">수업을 시작해주세요.</div>
+          <div class="statline">
+            <span id="currentClass" class="badge gray">-</span>
+            <span id="currentMode" class="badge">-</span>
+            <span class="badge gray">응답 <span id="count" style="margin-left:4px">0</span>명</span>
+            <span id="updatedAt"></span>
+          </div>
+          <div id="summary"></div>
+        </section>
+
+        <section class="panel">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
+            <div class="panel-title">학생 응답</div>
+            <button id="clearCurrentBtn" class="danger">현재 응답 삭제</button>
+          </div>
+          <div id="responses" class="responses"><div class="empty">아직 제출된 응답이 없습니다.</div></div>
+        </section>
+
+        <section class="panel">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
+            <div>
+              <div class="panel-title">이전 질문 기록</div>
+              <div id="historyCount" class="sub" style="margin-top:4px">0개 질문</div>
+            </div>
+          </div>
+          <div id="historyFilters" class="history-tools"></div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </div>
+
+      <aside class="side-col">
+        <section class="panel qr-box">
+          <div class="panel-title">학생 접속 QR</div>
+          <div class="sub" style="margin:5px 0 12px">모든 반이 같은 QR을 사용합니다.</div>
+          <img id="qrSmall" alt="학생 접속 QR">
+          <div id="qrCount" class="qr-count">0명</div>
+          <div class="qr-caption">학생은 별도 로그인 화면 없이 자동 익명 인증됩니다.</div>
+        </section>
+        <section class="panel">
+          <div class="panel-title">연결 방식</div>
+          <div class="sub" style="margin-top:8px">학생 화면은 5초마다 확인하지 않습니다. 현재 수업과 질문 경로의 변경 이벤트만 듣습니다. 교사가 수업을 종료하면 기존 학생 페이지는 Firebase 연결을 끊습니다.</div>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <section id="presentation" class="presentation">
+    <div class="presentation-inner">
+      <div class="presentation-top">
+        <div>
+          <div class="badge-row"><span id="presentationClass" class="class-badge">-</span><span id="presentationMode" class="mode">-</span></div>
+          <div id="presentationQuestion" class="presentation-question">질문</div>
+        </div>
+        <button id="exitPresentationBtn">발표 모드 종료</button>
+      </div>
+      <div class="presentation-grid">
+        <div id="presentationResult" class="presentation-result"></div>
+        <aside class="presentation-side qr-big">
+          <div class="panel-title">학생 접속 QR</div>
+          <img id="qrPresentation" alt="학생 접속 QR">
+          <div id="presentationCount" class="presentation-count">0명</div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <script type="module" src="teacher.js"></script>
+</body>
+</html>
